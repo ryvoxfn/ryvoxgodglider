@@ -2,7 +2,7 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>Drop Calc Pro (Calibrado)</title>
+<title>Drop Calc Pro (Física Real)</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
@@ -20,27 +20,23 @@ body{
     width:100%;
     display:flex;
     justify-content:space-between;
-    align-items:center;
     padding:10px 20px;
     background:rgba(0,0,0,0.4);
-    backdrop-filter: blur(10px);
     z-index:1000;
 }
 
-.controls button{
+button{
     margin-left:10px;
     padding:8px 14px;
     border:none;
     border-radius:8px;
     background:linear-gradient(135deg,#00ffc3,#00aaff);
-    color:#000;
     font-weight:bold;
     cursor:pointer;
 }
 
 #map{
     height:100vh;
-    cursor:crosshair;
 }
 
 .info{
@@ -50,7 +46,6 @@ body{
     background:rgba(0,0,0,0.5);
     padding:15px;
     border-radius:12px;
-    backdrop-filter: blur(10px);
 }
 </style>
 </head>
@@ -58,8 +53,8 @@ body{
 <body>
 
 <div class="topbar">
-    <h1>🎯 Drop Calc Pro</h1>
-    <div class="controls">
+    <h2>🎯 Drop Calc Pro</h2>
+    <div>
         <button onclick="toggleBusMode()">Definir Ônibus</button>
         <button onclick="resetar()">Reset</button>
     </div>
@@ -70,7 +65,6 @@ body{
 <div class="info">
     <p>📍 <span id="coords">-</span></p>
     <p>📏 <span id="dist">-</span></p>
-    <p>⏱ <span id="tempo">simulado</span></p>
 </div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -98,7 +92,7 @@ img.onload=()=>{
     loaded=true;
 };
 
-function getTerrenoReal(lat,lng){
+function getTerreno(lat,lng){
     if(!loaded) return 0;
 
     let x=Math.floor((lng/2048)*canvas.width);
@@ -106,32 +100,36 @@ function getTerrenoReal(lat,lng){
 
     let val=ctx.getImageData(x,y,1,1).data[0]/255;
 
-    return val * 850 - 20;
+    return val * 830 - 30;
 }
 
 // ================= VAR =================
 let busStart=null,busEnd=null,busLine=null;
 let markerDrop=null,puloMark=null,glideMark=null,finalMark=null;
 
-let tooltipPulo=null;
-let tooltipGlide=null;
-
 let modoOnibus=false;
 
 // ================= CLICK =================
 map.on('click',e=>{
+
     if(modoOnibus){
+
         if(!busStart){
             busStart=[e.latlng.lat,e.latlng.lng];
             L.marker(busStart).addTo(map);
         }else{
             busEnd=[e.latlng.lat,e.latlng.lng];
             L.marker(busEnd).addTo(map);
+
+            if(busLine) map.removeLayer(busLine);
             busLine=L.polyline([busStart,busEnd],{color:'cyan'}).addTo(map);
+
             modoOnibus=false;
         }
+
         return;
     }
+
     setDrop(e.latlng);
 });
 
@@ -154,7 +152,7 @@ function distancia(a,b){
     return Math.sqrt(dx*dx+dy*dy);
 }
 
-// ================= SIMULAÇÃO CALIBRADA =================
+// ================= SIMULAÇÃO REAL =================
 function simular(p, drop){
 
     let dx = drop.lat - p.lat;
@@ -162,97 +160,89 @@ function simular(p, drop){
 
     let distTotal = Math.sqrt(dx*dx + dy*dy);
 
-    let dirX = dx / distTotal;
-    let dirY = dy / distTotal;
+    let angle = Math.atan2(dy, dx);
 
-    let t = 0;
-    let dt = 0.016;
-
-    let dist = 0;
-
-    let velH = 0;
-    let velV = 0;
+    let t = 0, dt = 0.016;
+    let dist = 0, vel = 0;
 
     let glide = false;
     let glidePoint = null;
 
-    // ALTURA DINÂMICA
-    let altura = 1000 + getTerrenoReal(p.lat,p.lng);
+    for(let i=0;i<10000;i++){
 
-    while(true){
+        // curva leve (simula arrasto real)
+        angle += (Math.random()-0.5) * 0.01;
+
+        let dirX = Math.cos(angle);
+        let dirY = Math.sin(angle);
 
         let lat = p.lat + dirX * dist;
         let lng = p.lng + dirY * dist;
 
-        let terreno = getTerrenoReal(lat,lng);
+        if(isNaN(lat)||isNaN(lng)) break;
 
-        // gravidade
-        velV += 45 * dt;
-        velV = Math.min(velV,80);
-        altura -= velV * dt;
+        let terreno = getTerreno(lat,lng);
+
+        // gravidade mais real
+        let altura = 800 - (0.5 * 30 * t * t);
 
         let rel = altura - terreno;
 
-        // glide dinâmico
-        let triggerGlide = 300 + (terreno * 0.05);
-
-        if(!glide && rel <= triggerGlide){
-            glide = true;
-            glidePoint = {lat,lng};
-
-            velH *= 0.7;
-            velV *= 0.2;
+        // glide baseado em altura + velocidade
+        if(!glide && rel <= 270 + vel*2){
+            glide=true;
+            glidePoint={lat,lng};
         }
 
-        // velocidade horizontal
+        // aceleração mais real
         if(!glide){
-            velH += (42 - velH) * 0.12;
+            vel += (35 - vel)*0.08;
         }else{
-            velH += (26 - velH) * 0.08;
+            vel += (28 - vel)*0.05;
         }
 
-        dist += velH * dt;
+        dist += vel * dt;
 
         if(altura <= terreno){
-            return {
-                final:{lat,lng},
-                glide:glidePoint
-            };
+            return {final:{lat,lng}, glide:glidePoint};
         }
 
-        if(t > 120){
-            return {final:drop, glide:glidePoint};
-        }
-
-        t += dt;
+        t+=dt;
     }
+
+    return {final:drop, glide:glidePoint};
 }
 
 // ================= MELHOR PULO =================
 function melhorPulo(drop,a,b){
 
-    let best=null,err=999999,bestGlide=null;
+    let best=null,err=999999;
 
-    for(let i=0;i<=1;i+=0.001){
+    for(let i=0;i<=1;i+=0.02){
 
         let lat=a[0]+(b[0]-a[0])*i;
         let lng=a[1]+(b[1]-a[1])*i;
 
         let sim=simular({lat,lng},drop);
 
-        let e=distancia(sim.final,drop);
+        let erroFinal = distancia(sim.final, drop);
 
-        if(e<err){
-            err=e;
+        let erroGlide = sim.glide
+            ? distancia(sim.glide, drop) * 0.3
+            : 100;
+
+        let erro = erroFinal + erroGlide;
+
+        if(erro<err){
+            err=erro;
             best={lat,lng};
-            bestGlide=sim.glide;
         }
     }
 
-    return {pulo:best,glide:bestGlide};
+    return best;
 }
 
-// ================= ROTA =================
+// ================= DRAW =================
 function setDrop(p){
     if(markerDrop) map.removeLayer(markerDrop);
     markerDrop=L.marker(p).addTo(map);
@@ -264,48 +254,34 @@ function draw(drop){
 
     if(!busStart||!busEnd) return;
 
-    let data=melhorPulo(drop,busStart,busEnd);
-    let pulo=data.pulo;
-    let glide=data.glide;
+    let pulo=melhorPulo(drop,busStart,busEnd);
 
     let sim=simular(pulo,drop);
+
+    let glide=sim.glide;
     let final=sim.final;
 
     if(puloMark) map.removeLayer(puloMark);
     if(glideMark) map.removeLayer(glideMark);
     if(finalMark) map.removeLayer(finalMark);
 
-    if(tooltipPulo) map.removeLayer(tooltipPulo);
-    if(tooltipGlide) map.removeLayer(tooltipGlide);
+    map.eachLayer(l=>{
+        if(l instanceof L.Tooltip) map.removeLayer(l);
+    });
 
-    // 🔴 PULO
-    puloMark=L.circleMarker([pulo.lat,pulo.lng],{
-        radius:8,color:'red',fillColor:'red',fillOpacity:1
-    }).addTo(map);
+    puloMark=L.circleMarker([pulo.lat,pulo.lng],{color:'red'}).addTo(map);
+    finalMark=L.circleMarker([final.lat,final.lng],{color:'blue'}).addTo(map);
 
-    tooltipPulo = L.tooltip({permanent:true})
-    .setContent("Best Time to Jump")
-    .setLatLng([pulo.lat,pulo.lng])
-    .addTo(map);
-
-    // 🟢 GLIDE
     if(glide){
-        glideMark=L.circleMarker([glide.lat,glide.lng],{
-            radius:8,color:'lime',fillColor:'lime',fillOpacity:1
-        }).addTo(map);
-
-        tooltipGlide = L.tooltip({permanent:true})
-        .setContent("Best Autoredeploy Point")
-        .setLatLng([glide.lat,glide.lng])
-        .addTo(map);
+        glideMark=L.circleMarker([glide.lat,glide.lng],{color:'lime'}).addTo(map);
     }
 
-    // 🔵 FINAL
-    finalMark=L.circleMarker([final.lat,final.lng],{
-        radius:8,color:'blue',fillColor:'blue',fillOpacity:1
-    }).addTo(map);
+    L.tooltip({permanent:true}).setContent("Jump").setLatLng(pulo).addTo(map);
 
-    // HUD
+    if(glide){
+        L.tooltip({permanent:true}).setContent("Glide").setLatLng(glide).addTo(map);
+    }
+
     document.getElementById("coords").innerText =
         `${drop.lat.toFixed(0)}, ${drop.lng.toFixed(0)}`;
 
