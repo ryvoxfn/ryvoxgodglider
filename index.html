@@ -2,25 +2,51 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>Drop Calc Pro - Preciso</title>
+<title>Drop Calc Pro (Física Real)</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
 <style>
-body{margin:0;font-family:Arial;background:#0b0f1a;color:white;}
+body{
+    margin:0;
+    font-family:Arial;
+    background:#0b0f1a;
+    color:white;
+}
+
 .topbar{
-position:absolute;top:0;width:100%;display:flex;justify-content:space-between;
-align-items:center;padding:10px 20px;background:rgba(0,0,0,0.4);
-backdrop-filter: blur(10px);z-index:1000;
+    position:absolute;
+    top:0;
+    width:100%;
+    display:flex;
+    justify-content:space-between;
+    padding:10px 20px;
+    background:rgba(0,0,0,0.4);
+    backdrop-filter: blur(10px);
+    z-index:1000;
 }
+
 .controls button{
-margin-left:10px;padding:8px 14px;border:none;border-radius:8px;
-background:linear-gradient(135deg,#00ffc3,#00aaff);color:#000;font-weight:bold;cursor:pointer;
+    margin-left:10px;
+    padding:8px 14px;
+    border:none;
+    border-radius:8px;
+    background:linear-gradient(135deg,#00ffc3,#00aaff);
+    font-weight:bold;
+    cursor:pointer;
 }
-#map{height:100vh;}
+
+#map{
+    height:100vh;
+}
+
 .info{
-position:absolute;bottom:20px;left:20px;background:rgba(0,0,0,0.5);
-padding:15px;border-radius:12px;
+    position:absolute;
+    bottom:20px;
+    left:20px;
+    background:rgba(0,0,0,0.5);
+    padding:15px;
+    border-radius:12px;
 }
 </style>
 </head>
@@ -28,31 +54,32 @@ padding:15px;border-radius:12px;
 <body>
 
 <div class="topbar">
-<h1>🎯 Drop Calc Pro (Preciso)</h1>
-<div class="controls">
-<button onclick="toggleBusMode()">Definir Ônibus</button>
-<button onclick="resetar()">Reset</button>
-</div>
+    <h1>🎯 Drop Calc Pro</h1>
+    <div class="controls">
+        <button onclick="toggleBusMode()">Definir Ônibus</button>
+        <button onclick="resetar()">Reset</button>
+    </div>
 </div>
 
 <div id="map"></div>
 
 <div class="info">
-<p>📍 <span id="coords">-</span></p>
-<p>📏 <span id="dist">-</span></p>
+    <p>📍 <span id="coords">-</span></p>
+    <p>📏 <span id="dist">-</span></p>
+    <p>⏱ <span id="tempo">-</span></p>
 </div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
 <script>
 
-// MAP
-let map=L.map('map',{crs:L.CRS.Simple,minZoom:-2,maxZoom:2});
+// ================= MAP =================
+let map = L.map('map',{crs:L.CRS.Simple,minZoom:-2,maxZoom:2});
 let bounds=[[0,0],[2048,2048]];
 L.imageOverlay("mapa.jpg",bounds).addTo(map);
 map.fitBounds(bounds);
 
-// HEIGHTMAP
+// ================= HEIGHTMAP =================
 let canvas=document.createElement("canvas");
 let ctx=canvas.getContext("2d");
 let loaded=false;
@@ -61,209 +88,214 @@ let img=new Image();
 img.src="heightmap.png";
 
 img.onload=()=>{
-canvas.width=img.width;
-canvas.height=img.height;
-ctx.drawImage(img,0,0);
-loaded=true;
+    canvas.width=img.width;
+    canvas.height=img.height;
+    ctx.drawImage(img,0,0);
+    loaded=true;
 };
 
-function getAltura(lat,lng){
-if(!loaded) return 0.5;
-let x=Math.floor((lng/2048)*canvas.width);
-let y=Math.floor((lat/2048)*canvas.height);
-return ctx.getImageData(x,y,1,1).data[0]/255;
-}
-
 function getTerrenoReal(lat,lng){
-return getAltura(lat,lng)*820;
+    if(!loaded) return 0;
+
+    let x=Math.floor((lng/2048)*canvas.width);
+    let y=Math.floor((lat/2048)*canvas.height);
+
+    let val=ctx.getImageData(x,y,1,1).data[0]/255;
+
+    return val * 800; // altura máxima
 }
 
-// CURVA REAL
-const curvaTempo=[0,10,20,30,40,50,60,70];
-const curvaDist=[0,56,156,283,436,593,750,920];
-
-function distPorTempo(t){
-if(t<=0) return 0;
-if(t>=70) return 920;
-
-for(let i=0;i<curvaTempo.length-1;i++){
-let t1=curvaTempo[i];
-let t2=curvaTempo[i+1];
-if(t>=t1 && t<=t2){
-let d1=curvaDist[i];
-let d2=curvaDist[i+1];
-let p=(t-t1)/(t2-t1);
-return d1+(d2-d1)*p;
-}
-}
-}
-
-// VAR
+// ================= VAR =================
 let busStart=null,busEnd=null,busLine=null;
 let markerDrop=null,linha=null,puloMark=null,glideMark=null,finalMark=null;
-let tooltipPulo=null,tooltipGlide=null;
 
 let modoOnibus=false;
 
-// CLICK
+// ================= CLICK =================
 map.on('click',e=>{
-if(modoOnibus){
-if(!busStart){
-busStart=[e.latlng.lat,e.latlng.lng];
-L.marker(busStart).addTo(map);
-}else{
-busEnd=[e.latlng.lat,e.latlng.lng];
-L.marker(busEnd).addTo(map);
-busLine=L.polyline([busStart,busEnd],{color:'cyan'}).addTo(map);
-modoOnibus=false;
-}
-return;
-}
-setDrop(e.latlng);
+    if(modoOnibus){
+        if(!busStart){
+            busStart=[e.latlng.lat,e.latlng.lng];
+            L.marker(busStart).addTo(map);
+        }else{
+            busEnd=[e.latlng.lat,e.latlng.lng];
+            L.marker(busEnd).addTo(map);
+            busLine=L.polyline([busStart,busEnd],{color:'cyan'}).addTo(map);
+            modoOnibus=false;
+        }
+        return;
+    }
+    setDrop(e.latlng);
 });
 
+// ================= CONTROLES =================
 function toggleBusMode(){
-modoOnibus=true;
-busStart=null;busEnd=null;
-if(busLine) map.removeLayer(busLine);
+    modoOnibus=true;
+    busStart=null;
+    busEnd=null;
+    if(busLine) map.removeLayer(busLine);
 }
 
-function resetar(){location.reload();}
+function resetar(){
+    location.reload();
+}
 
+// ================= DIST =================
 function distancia(a,b){
-let dx=a.lat-b.lat;
-let dy=a.lng-b.lng;
-return Math.sqrt(dx*dx+dy*dy);
+    let dx=a.lat-b.lat;
+    let dy=a.lng-b.lng;
+    return Math.sqrt(dx*dx+dy*dy);
 }
 
-// SIMULAÇÃO BASEADA EM DADOS
-function simular(p,drop){
+// ================= SIMULAÇÃO FÍSICA =================
+function simular(p, drop){
 
-let dx=drop.lat-p.lat;
-let dy=drop.lng-p.lng;
+    let dx = drop.lat - p.lat;
+    let dy = drop.lng - p.lng;
 
-let distTotal=Math.sqrt(dx*dx+dy*dy);
-let nx=dx/distTotal;
-let ny=dy/distTotal;
+    let distTotal = Math.sqrt(dx*dx + dy*dy);
 
-let t=0;
-let dt=0.05;
+    let dirX = dx / distTotal;
+    let dirY = dy / distTotal;
 
-let glide=false;
-let glidePoint=null;
+    let pos = { x:0, y:0, z:800 };
+    let vel = { x:0, y:0, z:0 };
 
-while(true){
+    let t = 0;
+    let dt = 0.016;
 
-let dist=distPorTempo(t);
+    let glide = false;
+    let glidePoint = null;
 
-let lat=p.lat+nx*dist;
-let lng=p.lng+ny*dist;
+    while(true){
 
-let terreno=getTerrenoReal(lat,lng);
-let altura=800-(t*11);
+        let lat = p.lat + dirX * pos.x;
+        let lng = p.lng + dirY * pos.y;
 
-let rel=altura-terreno;
+        let terreno = getTerrenoReal(lat,lng);
+        let alturaRel = pos.z - terreno;
 
-if(!glide && rel<=300){
-glide=true;
-glidePoint={lat,lng};
+        if(!glide && alturaRel <= 280){
+            glide = true;
+            glidePoint = {lat, lng};
+            vel.z = -10;
+        }
+
+        let gravidade = glide ? -8 : -25;
+        let drag = glide ? 0.08 : 0.02;
+
+        vel.z += gravidade * dt;
+
+        let targetSpeed = glide ? 35 : 20;
+
+        vel.x += (targetSpeed - vel.x) * drag;
+        vel.y += (targetSpeed - vel.y) * drag;
+
+        pos.x += vel.x * dt;
+        pos.y += vel.y * dt;
+        pos.z += vel.z * dt;
+
+        if(pos.z <= terreno){
+            return {
+                final:{lat,lng},
+                glide:glidePoint
+            };
+        }
+
+        if(t > 120){
+            return {final:drop, glide:glidePoint};
+        }
+
+        t += dt;
+    }
 }
 
-if(rel<=0){
-return {final:{lat,lng},glide:glidePoint};
-}
-
-if(t>80){
-return {final:drop,glide:glidePoint};
-}
-
-t+=dt;
-}
-}
-
-// MELHOR PULO
+// ================= MELHOR PULO =================
 function melhorPulo(drop,a,b){
 
-let best=null,err=999999,bestGlide=null;
+    let best=null,err=999999,bestGlide=null;
 
-for(let i=0;i<=1;i+=0.02){
+    for(let i=0;i<=1;i+=0.01){
 
-let lat=a[0]+(b[0]-a[0])*i;
-let lng=a[1]+(b[1]-a[1])*i;
+        let lat=a[0]+(b[0]-a[0])*i;
+        let lng=a[1]+(b[1]-a[1])*i;
 
-let sim=simular({lat,lng},drop);
-let e=distancia(sim.final,drop);
+        let sim=simular({lat,lng},drop);
 
-if(e<err){
-err=e;
-best={lat,lng};
-bestGlide=sim.glide;
+        let e=distancia(sim.final,drop);
+
+        if(e<err){
+            err=e;
+            best={lat,lng};
+            bestGlide=sim.glide;
+        }
+    }
+
+    return {pulo:best,glide:bestGlide};
 }
-}
 
-return {pulo:best,glide:bestGlide};
-}
-
-// ROTA
+// ================= ROTA =================
 function setDrop(p){
-if(markerDrop) map.removeLayer(markerDrop);
-markerDrop=L.marker(p).addTo(map);
-draw(p);
+    if(markerDrop) map.removeLayer(markerDrop);
+    markerDrop=L.marker(p).addTo(map);
+
+    draw(p);
 }
 
 function draw(drop){
 
-if(!busStart||!busEnd) return;
+    if(!busStart||!busEnd) return;
 
-let data=melhorPulo(drop,busStart,busEnd);
-let pulo=data.pulo;
-let glide=data.glide;
+    let data=melhorPulo(drop,busStart,busEnd);
+    let pulo=data.pulo;
+    let glide=data.glide;
 
-let sim=simular(pulo,drop);
-let final=sim.final;
+    let sim=simular(pulo,drop);
+    let final=sim.final;
 
-if(linha) map.removeLayer(linha);
-if(puloMark) map.removeLayer(puloMark);
-if(glideMark) map.removeLayer(glideMark);
-if(finalMark) map.removeLayer(finalMark);
-if(tooltipPulo) map.removeLayer(tooltipPulo);
-if(tooltipGlide) map.removeLayer(tooltipGlide);
+    if(linha) map.removeLayer(linha);
+    if(puloMark) map.removeLayer(puloMark);
+    if(glideMark) map.removeLayer(glideMark);
+    if(finalMark) map.removeLayer(finalMark);
 
-linha=L.polyline([[pulo.lat,pulo.lng],[drop.lat,drop.lng]],{
-color:'#00e0ff',dashArray:'10,10',weight:4
-}).addTo(map);
+    linha=L.polyline([[pulo.lat,pulo.lng],[drop.lat,drop.lng]],{
+        color:'#00e0ff',
+        dashArray:'10,10',
+        weight:4
+    }).addTo(map);
 
-puloMark=L.circleMarker([pulo.lat,pulo.lng],{
-radius:8,color:'red',fillColor:'red',fillOpacity:1
-}).addTo(map);
+    puloMark=L.circleMarker([pulo.lat,pulo.lng],{
+        radius:8,color:'red',fillColor:'red',fillOpacity:1
+    }).addTo(map);
 
-if(glide){
-glideMark=L.circleMarker([glide.lat,glide.lng],{
-radius:8,color:'lime',fillColor:'lime',fillOpacity:1
-}).addTo(map);
-}
+    if(glide){
+        glideMark=L.circleMarker([glide.lat,glide.lng],{
+            radius:8,color:'lime',fillColor:'lime',fillOpacity:1
+        }).addTo(map);
 
-finalMark=L.circleMarker([final.lat,final.lng],{
-radius:8,color:'blue',fillColor:'blue',fillOpacity:1
-}).addTo(map);
+        L.tooltip({permanent:true})
+        .setContent("Best Autoredeploy Point")
+        .setLatLng([glide.lat,glide.lng])
+        .addTo(map);
+    }
 
-tooltipPulo=L.tooltip({permanent:true})
-.setContent("Best Time to Jump")
-.setLatLng([pulo.lat,pulo.lng])
-.addTo(map);
+    finalMark=L.circleMarker([final.lat,final.lng],{
+        radius:8,color:'blue',fillColor:'blue',fillOpacity:1
+    }).addTo(map);
 
-if(glide){
-tooltipGlide=L.tooltip({permanent:true})
-.setContent("Best Autoredeploy Point")
-.setLatLng([glide.lat,glide.lng])
-.addTo(map);
-}
+    L.tooltip({permanent:true})
+    .setContent("Best Time to Jump")
+    .setLatLng([pulo.lat,pulo.lng])
+    .addTo(map);
 
-document.getElementById("coords").innerText=
-`${drop.lat.toFixed(0)}, ${drop.lng.toFixed(0)}`;
+    document.getElementById("coords").innerText =
+        `${drop.lat.toFixed(0)}, ${drop.lng.toFixed(0)}`;
 
-document.getElementById("dist").innerText=
-distancia(drop,final).toFixed(0)+" m";
+    document.getElementById("dist").innerText =
+        distancia(drop,final).toFixed(0)+" m";
+
+    document.getElementById("tempo").innerText =
+        "simulado";
 }
 
 </script>
