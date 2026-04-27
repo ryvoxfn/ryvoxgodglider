@@ -3,7 +3,7 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>Drop Calc Pro (Quase 99%)</title>
+<title>Drop Calc Pro (Estável + Otimizado)</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
@@ -15,7 +15,6 @@ body{
     color:white;
 }
 
-/* TOPO */
 .topbar{
     position:absolute;
     top:0;
@@ -40,13 +39,11 @@ body{
     cursor:pointer;
 }
 
-/* MAPA */
 #map{
     height:100vh;
     cursor:crosshair;
 }
 
-/* HUD */
 .info{
     position:absolute;
     bottom:20px;
@@ -54,7 +51,6 @@ body{
     background:rgba(0,0,0,0.5);
     padding:15px;
     border-radius:12px;
-    backdrop-filter: blur(10px);
 }
 </style>
 
@@ -109,9 +105,12 @@ function getTerrenoReal(lat,lng){
     let x=Math.floor((lng/2048)*canvas.width);
     let y=Math.floor((lat/2048)*canvas.height);
 
+    // clamp seguro
+    x = Math.max(0, Math.min(canvas.width-1, x));
+    y = Math.max(0, Math.min(canvas.height-1, y));
+
     let val=ctx.getImageData(x,y,1,1).data[0]/255;
 
-    // ajuste fino
     return val * 830 - 30;
 }
 
@@ -165,6 +164,8 @@ function simular(p, drop){
 
     let distTotal = Math.sqrt(dx*dx + dy*dy);
 
+    if(distTotal < 1) return {final: p, glide: null};
+
     let dirX = dx / distTotal;
     let dirY = dy / distTotal;
 
@@ -177,25 +178,21 @@ function simular(p, drop){
     let glide = false;
     let glidePoint = null;
 
-    while(true){
+    while(t < 120){
 
         let lat = p.lat + dirX * dist;
         let lng = p.lng + dirY * dist;
 
         let terreno = getTerrenoReal(lat,lng);
 
-        // altura realista
         let altura = 800 - (0.5 * 30 * t * t);
-
         let rel = altura - terreno;
 
-        // ativa glide
         if(!glide && rel <= 270){
             glide = true;
             glidePoint = {lat,lng};
         }
 
-        // velocidade horizontal realista
         if(!glide){
             vel += (35 - vel) * 0.08;
         }else{
@@ -204,7 +201,6 @@ function simular(p, drop){
 
         dist += vel * dt;
 
-        // impacto
         if(altura <= terreno){
             return {
                 final:{lat,lng},
@@ -212,12 +208,10 @@ function simular(p, drop){
             };
         }
 
-        if(t > 120){
-            return {final:drop, glide:glidePoint};
-        }
-
         t += dt;
     }
+
+    return {final:drop, glide:glidePoint};
 }
 
 // ================= MELHOR PULO =================
@@ -225,7 +219,7 @@ function melhorPulo(drop,a,b){
 
     let best=null,err=999999,bestGlide=null;
 
-    for(let i=0;i<=1;i+=0.01){
+    for(let i=0;i<=1;i+=0.02){
 
         let lat=a[0]+(b[0]-a[0])*i;
         let lng=a[1]+(b[1]-a[1])*i;
@@ -274,7 +268,6 @@ function draw(drop){
         weight:4
     }).addTo(map);
 
-    // PULO
     puloMark=L.circleMarker([pulo.lat,pulo.lng],{
         radius:8,
         color:'red',
@@ -287,7 +280,6 @@ function draw(drop){
     .setLatLng([pulo.lat,pulo.lng])
     .addTo(map);
 
-    // GLIDE
     if(glide){
         glideMark=L.circleMarker([glide.lat,glide.lng],{
             radius:8,
@@ -302,7 +294,6 @@ function draw(drop){
         .addTo(map);
     }
 
-    // FINAL
     finalMark=L.circleMarker([final.lat,final.lng],{
         radius:8,
         color:'blue',
@@ -310,7 +301,6 @@ function draw(drop){
         fillOpacity:1
     }).addTo(map);
 
-    // HUD
     document.getElementById("coords").innerText =
         `${drop.lat.toFixed(0)}, ${drop.lng.toFixed(0)}`;
 
