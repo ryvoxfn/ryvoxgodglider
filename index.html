@@ -2,7 +2,7 @@
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>Drop Calc Pro (Quase 99%)</title>
+<title>Drop Calc Pro (Calibrado)</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
@@ -106,12 +106,12 @@ function getTerrenoReal(lat,lng){
 
     let val=ctx.getImageData(x,y,1,1).data[0]/255;
 
-    return val * 900 - 50;
+    return val * 850 - 20;
 }
 
 // ================= VAR =================
 let busStart=null,busEnd=null,busLine=null;
-let markerDrop=null,linha=null,puloMark=null,glideMark=null,finalMark=null;
+let markerDrop=null,puloMark=null,glideMark=null,finalMark=null;
 
 let tooltipPulo=null;
 let tooltipGlide=null;
@@ -154,7 +154,7 @@ function distancia(a,b){
     return Math.sqrt(dx*dx+dy*dy);
 }
 
-// ================= SIMULAÇÃO REAL =================
+// ================= SIMULAÇÃO CALIBRADA =================
 function simular(p, drop){
 
     let dx = drop.lat - p.lat;
@@ -176,7 +176,8 @@ function simular(p, drop){
     let glide = false;
     let glidePoint = null;
 
-    let altura = 900;
+    // ALTURA DINÂMICA
+    let altura = 1000 + getTerrenoReal(p.lat,p.lng);
 
     while(true){
 
@@ -185,19 +186,25 @@ function simular(p, drop){
 
         let terreno = getTerrenoReal(lat,lng);
 
-        velV += 55 * dt;
+        // gravidade
+        velV += 45 * dt;
+        velV = Math.min(velV,80);
         altura -= velV * dt;
 
         let rel = altura - terreno;
 
-        if(!glide && rel <= 280){
+        // glide dinâmico
+        let triggerGlide = 300 + (terreno * 0.05);
+
+        if(!glide && rel <= triggerGlide){
             glide = true;
             glidePoint = {lat,lng};
 
-            velH *= 0.6;
-            velV *= 0.3;
+            velH *= 0.7;
+            velV *= 0.2;
         }
 
+        // velocidade horizontal
         if(!glide){
             velH += (42 - velH) * 0.12;
         }else{
@@ -226,7 +233,7 @@ function melhorPulo(drop,a,b){
 
     let best=null,err=999999,bestGlide=null;
 
-    for(let i=0;i<=1;i+=0.002){
+    for(let i=0;i<=1;i+=0.001){
 
         let lat=a[0]+(b[0]-a[0])*i;
         let lng=a[1]+(b[1]-a[1])*i;
@@ -264,19 +271,12 @@ function draw(drop){
     let sim=simular(pulo,drop);
     let final=sim.final;
 
-    if(linha) map.removeLayer(linha);
     if(puloMark) map.removeLayer(puloMark);
     if(glideMark) map.removeLayer(glideMark);
     if(finalMark) map.removeLayer(finalMark);
 
     if(tooltipPulo) map.removeLayer(tooltipPulo);
     if(tooltipGlide) map.removeLayer(tooltipGlide);
-
-    linha=L.polyline([[pulo.lat,pulo.lng],[drop.lat,drop.lng]],{
-        color:'#00e0ff',
-        dashArray:'10,10',
-        weight:4
-    }).addTo(map);
 
     // 🔴 PULO
     puloMark=L.circleMarker([pulo.lat,pulo.lng],{
