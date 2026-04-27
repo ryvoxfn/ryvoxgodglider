@@ -1,9 +1,8 @@
 <!DOCTYPE html>
-
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>Drop Calc Pro (Estável + Otimizado)</title>
+<title>Drop Calc Pro (Quase 99%)</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
@@ -51,9 +50,9 @@ body{
     background:rgba(0,0,0,0.5);
     padding:15px;
     border-radius:12px;
+    backdrop-filter: blur(10px);
 }
 </style>
-
 </head>
 
 <body>
@@ -71,7 +70,7 @@ body{
 <div class="info">
     <p>📍 <span id="coords">-</span></p>
     <p>📏 <span id="dist">-</span></p>
-    <p>⏱ <span id="tempo">-</span></p>
+    <p>⏱ <span id="tempo">simulado</span></p>
 </div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -105,18 +104,17 @@ function getTerrenoReal(lat,lng){
     let x=Math.floor((lng/2048)*canvas.width);
     let y=Math.floor((lat/2048)*canvas.height);
 
-    // clamp seguro
-    x = Math.max(0, Math.min(canvas.width-1, x));
-    y = Math.max(0, Math.min(canvas.height-1, y));
-
     let val=ctx.getImageData(x,y,1,1).data[0]/255;
 
-    return val * 830 - 30;
+    return val * 900 - 50;
 }
 
 // ================= VAR =================
 let busStart=null,busEnd=null,busLine=null;
 let markerDrop=null,linha=null,puloMark=null,glideMark=null,finalMark=null;
+
+let tooltipPulo=null;
+let tooltipGlide=null;
 
 let modoOnibus=false;
 
@@ -156,15 +154,13 @@ function distancia(a,b){
     return Math.sqrt(dx*dx+dy*dy);
 }
 
-// ================= SIMULAÇÃO =================
+// ================= SIMULAÇÃO REAL =================
 function simular(p, drop){
 
     let dx = drop.lat - p.lat;
     let dy = drop.lng - p.lng;
 
     let distTotal = Math.sqrt(dx*dx + dy*dy);
-
-    if(distTotal < 1) return {final: p, glide: null};
 
     let dirX = dx / distTotal;
     let dirY = dy / distTotal;
@@ -173,33 +169,42 @@ function simular(p, drop){
     let dt = 0.016;
 
     let dist = 0;
-    let vel = 0;
+
+    let velH = 0;
+    let velV = 0;
 
     let glide = false;
     let glidePoint = null;
 
-    while(t < 120){
+    let altura = 900;
+
+    while(true){
 
         let lat = p.lat + dirX * dist;
         let lng = p.lng + dirY * dist;
 
         let terreno = getTerrenoReal(lat,lng);
 
-        let altura = 800 - (0.5 * 30 * t * t);
+        velV += 55 * dt;
+        altura -= velV * dt;
+
         let rel = altura - terreno;
 
-        if(!glide && rel <= 270){
+        if(!glide && rel <= 280){
             glide = true;
             glidePoint = {lat,lng};
+
+            velH *= 0.6;
+            velV *= 0.3;
         }
 
         if(!glide){
-            vel += (35 - vel) * 0.08;
+            velH += (42 - velH) * 0.12;
         }else{
-            vel += (28 - vel) * 0.05;
+            velH += (26 - velH) * 0.08;
         }
 
-        dist += vel * dt;
+        dist += velH * dt;
 
         if(altura <= terreno){
             return {
@@ -208,10 +213,12 @@ function simular(p, drop){
             };
         }
 
+        if(t > 120){
+            return {final:drop, glide:glidePoint};
+        }
+
         t += dt;
     }
-
-    return {final:drop, glide:glidePoint};
 }
 
 // ================= MELHOR PULO =================
@@ -219,7 +226,7 @@ function melhorPulo(drop,a,b){
 
     let best=null,err=999999,bestGlide=null;
 
-    for(let i=0;i<=1;i+=0.02){
+    for(let i=0;i<=1;i+=0.002){
 
         let lat=a[0]+(b[0]-a[0])*i;
         let lng=a[1]+(b[1]-a[1])*i;
@@ -262,53 +269,48 @@ function draw(drop){
     if(glideMark) map.removeLayer(glideMark);
     if(finalMark) map.removeLayer(finalMark);
 
+    if(tooltipPulo) map.removeLayer(tooltipPulo);
+    if(tooltipGlide) map.removeLayer(tooltipGlide);
+
     linha=L.polyline([[pulo.lat,pulo.lng],[drop.lat,drop.lng]],{
         color:'#00e0ff',
         dashArray:'10,10',
         weight:4
     }).addTo(map);
 
+    // 🔴 PULO
     puloMark=L.circleMarker([pulo.lat,pulo.lng],{
-        radius:8,
-        color:'red',
-        fillColor:'red',
-        fillOpacity:1
+        radius:8,color:'red',fillColor:'red',fillOpacity:1
     }).addTo(map);
 
-    L.tooltip({permanent:true})
+    tooltipPulo = L.tooltip({permanent:true})
     .setContent("Best Time to Jump")
     .setLatLng([pulo.lat,pulo.lng])
     .addTo(map);
 
+    // 🟢 GLIDE
     if(glide){
         glideMark=L.circleMarker([glide.lat,glide.lng],{
-            radius:8,
-            color:'lime',
-            fillColor:'lime',
-            fillOpacity:1
+            radius:8,color:'lime',fillColor:'lime',fillOpacity:1
         }).addTo(map);
 
-        L.tooltip({permanent:true})
+        tooltipGlide = L.tooltip({permanent:true})
         .setContent("Best Autoredeploy Point")
         .setLatLng([glide.lat,glide.lng])
         .addTo(map);
     }
 
+    // 🔵 FINAL
     finalMark=L.circleMarker([final.lat,final.lng],{
-        radius:8,
-        color:'blue',
-        fillColor:'blue',
-        fillOpacity:1
+        radius:8,color:'blue',fillColor:'blue',fillOpacity:1
     }).addTo(map);
 
+    // HUD
     document.getElementById("coords").innerText =
         `${drop.lat.toFixed(0)}, ${drop.lng.toFixed(0)}`;
 
     document.getElementById("dist").innerText =
         distancia(drop,final).toFixed(0)+" m";
-
-    document.getElementById("tempo").innerText =
-        "simulado";
 }
 
 </script>
