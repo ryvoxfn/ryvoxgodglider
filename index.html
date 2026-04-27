@@ -1,8 +1,9 @@
 <!DOCTYPE html>
+
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>Drop Calc Pro (Física Real)</title>
+<title>Drop Calc Pro (Quase 99%)</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
@@ -14,12 +15,14 @@ body{
     color:white;
 }
 
+/* TOPO */
 .topbar{
     position:absolute;
     top:0;
     width:100%;
     display:flex;
     justify-content:space-between;
+    align-items:center;
     padding:10px 20px;
     background:rgba(0,0,0,0.4);
     backdrop-filter: blur(10px);
@@ -32,14 +35,18 @@ body{
     border:none;
     border-radius:8px;
     background:linear-gradient(135deg,#00ffc3,#00aaff);
+    color:#000;
     font-weight:bold;
     cursor:pointer;
 }
 
+/* MAPA */
 #map{
     height:100vh;
+    cursor:crosshair;
 }
 
+/* HUD */
 .info{
     position:absolute;
     bottom:20px;
@@ -47,8 +54,10 @@ body{
     background:rgba(0,0,0,0.5);
     padding:15px;
     border-radius:12px;
+    backdrop-filter: blur(10px);
 }
 </style>
+
 </head>
 
 <body>
@@ -102,7 +111,8 @@ function getTerrenoReal(lat,lng){
 
     let val=ctx.getImageData(x,y,1,1).data[0]/255;
 
-    return val * 800; // altura máxima
+    // ajuste fino
+    return val * 830 - 30;
 }
 
 // ================= VAR =================
@@ -147,7 +157,7 @@ function distancia(a,b){
     return Math.sqrt(dx*dx+dy*dy);
 }
 
-// ================= SIMULAÇÃO FÍSICA =================
+// ================= SIMULAÇÃO =================
 function simular(p, drop){
 
     let dx = drop.lat - p.lat;
@@ -158,44 +168,44 @@ function simular(p, drop){
     let dirX = dx / distTotal;
     let dirY = dy / distTotal;
 
-    let pos = { x:0, y:0, z:800 };
-    let vel = { x:0, y:0, z:0 };
-
     let t = 0;
     let dt = 0.016;
+
+    let dist = 0;
+    let vel = 0;
 
     let glide = false;
     let glidePoint = null;
 
     while(true){
 
-        let lat = p.lat + dirX * pos.x;
-        let lng = p.lng + dirY * pos.y;
+        let lat = p.lat + dirX * dist;
+        let lng = p.lng + dirY * dist;
 
         let terreno = getTerrenoReal(lat,lng);
-        let alturaRel = pos.z - terreno;
 
-        if(!glide && alturaRel <= 280){
+        // altura realista
+        let altura = 800 - (0.5 * 30 * t * t);
+
+        let rel = altura - terreno;
+
+        // ativa glide
+        if(!glide && rel <= 270){
             glide = true;
-            glidePoint = {lat, lng};
-            vel.z = -10;
+            glidePoint = {lat,lng};
         }
 
-        let gravidade = glide ? -8 : -25;
-        let drag = glide ? 0.08 : 0.02;
+        // velocidade horizontal realista
+        if(!glide){
+            vel += (35 - vel) * 0.08;
+        }else{
+            vel += (28 - vel) * 0.05;
+        }
 
-        vel.z += gravidade * dt;
+        dist += vel * dt;
 
-        let targetSpeed = glide ? 35 : 20;
-
-        vel.x += (targetSpeed - vel.x) * drag;
-        vel.y += (targetSpeed - vel.y) * drag;
-
-        pos.x += vel.x * dt;
-        pos.y += vel.y * dt;
-        pos.z += vel.z * dt;
-
-        if(pos.z <= terreno){
+        // impacto
+        if(altura <= terreno){
             return {
                 final:{lat,lng},
                 glide:glidePoint
@@ -264,13 +274,26 @@ function draw(drop){
         weight:4
     }).addTo(map);
 
+    // PULO
     puloMark=L.circleMarker([pulo.lat,pulo.lng],{
-        radius:8,color:'red',fillColor:'red',fillOpacity:1
+        radius:8,
+        color:'red',
+        fillColor:'red',
+        fillOpacity:1
     }).addTo(map);
 
+    L.tooltip({permanent:true})
+    .setContent("Best Time to Jump")
+    .setLatLng([pulo.lat,pulo.lng])
+    .addTo(map);
+
+    // GLIDE
     if(glide){
         glideMark=L.circleMarker([glide.lat,glide.lng],{
-            radius:8,color:'lime',fillColor:'lime',fillOpacity:1
+            radius:8,
+            color:'lime',
+            fillColor:'lime',
+            fillOpacity:1
         }).addTo(map);
 
         L.tooltip({permanent:true})
@@ -279,15 +302,15 @@ function draw(drop){
         .addTo(map);
     }
 
+    // FINAL
     finalMark=L.circleMarker([final.lat,final.lng],{
-        radius:8,color:'blue',fillColor:'blue',fillOpacity:1
+        radius:8,
+        color:'blue',
+        fillColor:'blue',
+        fillOpacity:1
     }).addTo(map);
 
-    L.tooltip({permanent:true})
-    .setContent("Best Time to Jump")
-    .setLatLng([pulo.lat,pulo.lng])
-    .addTo(map);
-
+    // HUD
     document.getElementById("coords").innerText =
         `${drop.lat.toFixed(0)}, ${drop.lng.toFixed(0)}`;
 
